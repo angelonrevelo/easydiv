@@ -92,6 +92,18 @@ const FIXTURES = [
   { name: 'Stripe Pricing', file: 'fixtures/stripe-pricing.html' }
 ];
 
+// Expected detector group counts per real fixture. These lock the detector's
+// behaviour on the exact sites downstream design databases audit, so drift
+// (e.g. Linear/Stripe header over-detection regressing) fails `npm test`
+// instead of only printing a different report. Update intentionally when the
+// detector contract changes.
+const EXPECTED_GROUPS = {
+  'Vercel':         { footer: 1, header: 1, nav: 15, section: 5, button: 15, form: 1 },
+  'Linear':         { footer: 1, header: 9, nav: 2, section: 3, button: 15, list: 1 },
+  'Tailwind UI':    { header: 1, footer: 1, nav: 2, section: 15, button: 12, hero: 1 },
+  'Stripe Pricing': { header: 15, footer: 15, nav: 8, section: 15, button: 15, list: 1 }
+};
+
 console.log('\n== detector against real-world HTML ==\n');
 
 for (const fx of FIXTURES) {
@@ -126,6 +138,22 @@ for (const fx of FIXTURES) {
       const cls = (el.className && typeof el.className === 'string' ? el.className : el.getAttribute && el.getAttribute('class')) || '';
       const snippet = `<${el.tagName.toLowerCase()}${cls ? ` class="${cls.slice(0, 40)}${cls.length > 40 ? '…' : ''}"` : ''}>`;
       console.log(`      · [${c.score}] ${snippet}  — ${c.reason}${c.clusterCount ? ` (${c.clusterCount}×)` : ''}`);
+    }
+  }
+
+  // Fail (not just report) on detector drift for fixtures with a locked contract.
+  const expected = EXPECTED_GROUPS[fx.name];
+  if (expected) {
+    // Explicit fixture-named drift guards for the design databases' key sites.
+    if (fx.name === 'Linear') assert('Linear header count locked', (result.groups.header || []).length, expected.header);
+    if (fx.name === 'Stripe Pricing') assert('Stripe header count locked', (result.groups.header || []).length, expected.header);
+    for (const [type, count] of Object.entries(expected)) {
+      assert(`${fx.name} ${type} count`, (result.groups[type] || []).length, count);
+    }
+    for (const type of Object.keys(result.groups)) {
+      if (!(type in expected)) {
+        assert(`${fx.name} unexpected group '${type}' (${result.groups[type].length})`, false, true);
+      }
     }
   }
   console.log('');
